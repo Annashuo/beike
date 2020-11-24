@@ -14,11 +14,23 @@ from config import *
 from lib.utils.local_time import *
 from lib.utils.file_storage import *
 from lib.request.web_request_header import *
+import sqlite3
 
 
 class web_xiaoqu():
-    def __init__(self):
-        pass
+    def __init__(self, city_name, district):
+        self.city_name = city_name
+        self.district = district
+        self.price_info_list = list()
+        conn = sqlite3.connect('house.db')
+        conn.text_factory = str
+        c = conn.cursor()
+        # Create table
+        sql = 'create table if not exists ' + self.district + ' ( name text, year integer, price integer, deal interger)'
+
+        c.execute(sql)
+        conn.commit()
+        conn.close()
 
     def format_price_info(self, name, year, price, deal):
         return "{0}, {1}, {2}, {3}\n".format(name, year, price, deal)
@@ -51,23 +63,23 @@ class web_xiaoqu():
             xiaoqu_price = house_content.find("div", class_="totalPrice")
 
             # 整理小区名称数据
-            name = xiaoqu_name.text.strip().encode("utf-8")
+            name = xiaoqu_name.text.strip().encode("utf-8").decode("utf-8")
 
             # 整理成交量数据
             try:
-                deal = re.findall(r'\d+', xiaoqu_dealnum.find("a").text.encode("utf-8"))[1].encode("utf-8")
+                deal = re.findall(r'\d+', xiaoqu_dealnum.find("a").text)[1].encode("utf-8").decode("utf-8")
             except Exception as e:
                 deal = "0"
 
             # 整理单价数据
             try:
-                price = re.findall(r'\d+', xiaoqu_price.text)[0].encode("utf-8")
+                price = re.findall(r'\d+', xiaoqu_price.text)[0].encode("utf-8").decode("utf-8")
             except Exception as e:
                 price = "0"
 
             # 整理年份
             try:
-                year = re.findall(r'\d+', xiaoqu_year.text[xiaoqu_year.text.find("/"):])[0].encode("utf-8")
+                year = re.findall(r'\d+', xiaoqu_year.text[xiaoqu_year.text.find("/"):])[0].encode("utf-8").decode("utf-8")
             except Exception as e:
                 year = "0"
 
@@ -80,12 +92,9 @@ class web_xiaoqu():
             self.price_info_list.append(price_fmt_str)
 
 
-    def get_price_info(self, city_name, district):
-        self.city_name = city_name
-        self.district = district
-        self.price_info_list = list()
+    def get_price_info(self):
 
-        target_web = 'http://{0}.ke.com/xiaoqu/{1}/y4/'.format(city_name, district)
+        target_web = 'http://{0}.ke.com/xiaoqu/{1}/y4/'.format(self.city_name, self.district)
         print('request target web:', target_web)
 
         # 获得请求头部
@@ -103,7 +112,7 @@ class web_xiaoqu():
             tmp2 = str(page_box).find("curPage")
             total_page = int(re.findall(r'\d+', str(page_box)[tmp1: tmp2])[0])
         except Exception as e:
-            print("warning: only find one page for {0}".format(city_name))
+            print("warning: only find one page for {0}".format(self.city_name))
             print(e)
             total_page
 
@@ -134,6 +143,31 @@ class web_xiaoqu():
             fd.write("data, year, price, deal\n")
             for price in self.price_info_list:
                 fd.write(price)
+
+    def check_db(self, name):
+        conn = sqlite3.connect('house.db')
+        conn.text_factory = str
+        c = conn.cursor()
+        sql = "SELECT rowid FROM {0} WHERE name = '{1}'".format(self.district, name,)
+        c.execute(sql)
+        data = c.fetchall()
+
+        conn.close()
+        if len(data) == 0:
+            return False
+        return True
+
+    def store_into_db(self):
+        conn = sqlite3.connect('house.db')
+        conn.text_factory = str
+        c = conn.cursor()
+        for info in self.price_info_list:
+            if not self.check_db(info[0]):
+                sql = "insert into {0} values ( '{1}', {2}, {3}, {4})"\
+                    .format(self.district, info[0], info[1], info[2], info[3])
+                c.execute(sql)
+        conn.commit()
+        conn.close()
 
 
 if __name__ == "__main__":
