@@ -8,17 +8,33 @@ import requests
 import math
 import random
 import time
+import datetime
 from bs4 import BeautifulSoup
 from config import *
-
+import sqlite3
+from csv import reader
 from lib.utils.local_time import *
 from lib.utils.file_storage import *
 from lib.request.web_request_header import *
 
 
 class web_house():
-    def __init__(self):
-        pass
+    def __init__(self, city, xiaoqu, xiaoqu_name):
+        self.city = city
+        self.xiaoqu = xiaoqu
+        self.xiaoqu_name = xiaoqu_name
+        self.numbers = set()
+        self.price_info_list = list()
+        conn = sqlite3.connect('house.db')
+        conn.text_factory = str
+        c = conn.cursor()
+        # Create table
+        sql = 'create table if not exists ' + self.xiaoqu_name + ' ( hid integer, plan text, layer text, area float, direction text, elevator text, begin_time date, end_time date, duration integer, open_price integer, deal_price integer, by_price integer)'
+
+        c.execute(sql)
+        conn.commit()
+        conn.close()
+
 
     def format_price_info(self, house_number, house_type, house_layer, house_area, house_direction,
         house_elevator, house_time, deal_date, duration, begin_price, end_price, by_price):
@@ -26,8 +42,8 @@ class web_house():
             format(house_number, house_type, house_layer, house_area, house_direction,
             house_elevator, house_time, deal_date, duration, begin_price, end_price, by_price)
 
-    def get_raw_price_info(self, houseid, deal_date, city, headers):
-        if houseid in self.numbers:
+    def get_raw_price_info(self, houseid, deal_date, headers):
+        if houseid in self.numbers or self.check_db(houseid):
             return
         if True == RANDOM_DELAY:
             # 随机延时（0-15）秒
@@ -35,7 +51,7 @@ class web_house():
             print('random delay: %s S...' % (random_delay))
             time.sleep(random_delay)
 
-        target_web = 'http://{0}.ke.com/chengjiao/{1}.html'.format(city, houseid)
+        target_web = 'http://{0}.ke.com/chengjiao/{1}.html'.format(self.city, houseid)
         print('request target web:', target_web)
         response = requests.get(target_web, timeout=10, headers=headers)
         html = response.content
@@ -103,7 +119,7 @@ class web_house():
             house_elevator, house_time, deal_date, duration, begin_price, end_price, by_price)
             self.price_info_list.append(price_fmt_str)
 
-    def get_page_price_info(self, target_sub_web, city, headers):
+    def get_page_price_info(self, target_sub_web, headers):
         if True == RANDOM_DELAY:
             # 随机延时（0-15）秒
             random_delay = random.randint(0, DELAY_MAX + 1)
@@ -124,18 +140,16 @@ class web_house():
         for house_content in house_contents:
             item = str(house_content.find("a", class_="CLICKDATA maidian-detail"))
             num = int(re.findall(r'\d+', item[item.find("fb_item_id"):])[0])
-            deal_date = house_content.find("div", "dealDate").text.strip().encode("utf-8").decode("utf-8")
-            self.get_raw_price_info(num, deal_date, city, headers)
+            deal_date = house_content.find("div", "dealDate").text.strip()
+            dates = re.findall(r'\d+', deal_date)
+            deal_date = datetime.date(int(dates[0]), int(dates[1]), int(dates[2]))
+            self.get_raw_price_info(num, deal_date, headers)
 
 
-    def get_price_info(self, city, xiaoqu):
+    def get_price_info(self):
         # xiaoqu = xiaoqu.encode("utf-8").decode("utf-8")
-        self.city = city
-        self.xiaoqu = xiaoqu
-        self.numbers = set()
-        self.price_info_list = list()
 
-        target_web = 'http://{0}.ke.com/chengjiao/rs{1}/'.format(city, xiaoqu)
+        target_web = 'http://{0}.ke.com/chengjiao/rs{1}/'.format(self.city, self.xiaoqu)
         print('request target web:', target_web)
 
         # 获得请求头部
@@ -153,7 +167,7 @@ class web_house():
             tmp2 = str(page_box).find("curPage")
             total_page = int(re.findall(r'\d+', str(page_box)[tmp1: tmp2])[0])
         except Exception as e:
-            print("warning: only find one page for {0}".format(xiaoqu))
+            print("warning: only find one page for {0}".format(self.xiaoqu))
             print(e)
             total_page = 2
 
@@ -166,11 +180,11 @@ class web_house():
             print('request target web:', target_sub_web)
 
             # 发起网页请求
-            self.get_page_price_info(target_sub_web, city, headers)
+            self.get_page_price_info(target_sub_web, headers)
 
 
 
-    def store_price_info(self, xiaoqu):
+    def store_price_info(self):
         # 创建数据存储目录
         root_path = get_root_path()
         store_dir_path = root_path + "/data/original_data/{0}".format(self.city)
@@ -179,11 +193,54 @@ class web_house():
             os.makedirs(store_dir_path)
 
         # 存储格式化的房价数据到相应日期的文件中
-        store_path = store_dir_path + "/{0}.csv".format(xiaoqu)
+        store_path = store_dir_path + "/{0}.csv".format(self.xiaoqu)
         with open(store_path, "w") as fd:
             fd.write("房号, 户型, 楼层, 面积, 朝向, 电梯, 放盘时间, 成交时间, 周期, 挂牌价, 成交价, 单价\n")
             for price in self.price_info_list:
                 fd.write(price)
+
+
+    def fetch_old_data(self):
+        root_path = get_root_path()
+        store_dir_path = root_path + "/data/original_data/{0}".format(self.city)
+        is_dir_exit = os.path.exists(store_dir_path)
+        if not is_dir_exit:
+            os.makedirs(store_dir_path)
+
+        # 存储格式化的房价数据到相应日期的文件中
+        store_path = store_dir_path + "/{0}.csv".format(self.xiaoqu)
+        with open(store_path, "r") as fd:
+            csv_reader = reader(fd)
+            # Pass reader object to list() to get a list of lists
+            list_of_rows = list(csv_reader)[1:]
+            self.price_info_list += list_of_rows
+
+    def check_db(self, hid):
+        conn = sqlite3.connect('house.db')
+        conn.text_factory = str
+        c = conn.cursor()
+        sql = "SELECT rowid FROM {0} WHERE hid = {1}".format(self.xiaoqu_name, hid,)
+        c.execute(sql)
+        data = c.fetchall()
+
+        conn.close()
+        if len(data) == 0:
+            return False
+        return True
+
+    def store_into_db(self):
+        conn = sqlite3.connect('house.db')
+        conn.text_factory = str
+        c = conn.cursor()
+        for info in self.price_info_list:
+            if not self.check_db(info[0]):
+                sql = "insert into {0} values ( {1}, '{2}', '{3}', {4}, '{5}', '{6}', '{7}', '{8}', {9}, {10}, {11}, {12})"\
+                    .format(self.xiaoqu_name, info[0], info[1], info[2], info[3], info[4], info[5], info[6], info[7], info[8],
+                            info[9], info[10], info[11])
+                c.execute(sql)
+
+        conn.commit()
+        conn.close()
 
 
 if __name__ == "__main__":
