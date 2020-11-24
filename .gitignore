@@ -1,0 +1,5 @@
+*.pyc
+data/original_data/*
+data/analysis_data/*
+.vscode
+tags
