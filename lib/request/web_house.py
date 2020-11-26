@@ -61,9 +61,12 @@ class web_house():
         #     contents = f.read()
         # soup = BeautifulSoup(contents, 'lxml')
 
-        house_price = soup.find("div", class_="info fr")
-        house_base = soup.find("div", class_="base").find("div", class_="content")
-        house_transaction = soup.find("div", class_="transaction").find("div", class_="content")
+        try:
+            house_price = soup.find("div", class_="info fr")
+            house_base = soup.find("div", class_="base").find("div", class_="content")
+            house_transaction = soup.find("div", class_="transaction").find("div", class_="content")
+        except Exception as e:
+            return
 
         try:
             end_price = house_price.find("span", class_="dealTotalPrice").text.encode("utf-8").decode("utf-8")
@@ -169,9 +172,11 @@ class web_house():
         except Exception as e:
             print("warning: only find one page for {0}".format(self.xiaoqu))
             print(e)
-            total_page = 2
+            total_page = 1
 
         print('total pages:', total_page)
+        if total_page > 2:
+            total_page = 2
         headers = create_request_headers()
         # 遍历房价网页
         for i in range(1, total_page + 1):
@@ -233,6 +238,7 @@ class web_house():
         conn.text_factory = str
         c = conn.cursor()
         for info in self.price_info_list:
+            info = info.strip().split(',')
             if not self.check_db(info[0]):
                 sql = "insert into {0} values ( {1}, '{2}', '{3}', {4}, '{5}', '{6}', '{7}', '{8}', {9}, {10}, {11}, {12})"\
                     .format(self.xiaoqu_name, info[0], info[1], info[2], info[3], info[4], info[5], info[6], info[7], info[8],
@@ -241,6 +247,49 @@ class web_house():
 
         conn.commit()
         conn.close()
+
+    def price_by_month(self, year):
+        conn = sqlite3.connect('house.db')
+        conn.text_factory = str
+        c = conn.cursor()
+        for month in range(1, 13):
+            begin = str(year) + str(month).zfill(2) + '01'
+            end = str(year) + str(month + 1).zfill(2) + '01'
+            if month == 12:
+                end = str(year + 1) + '-' + '0101'
+            sql = 'select * from ' + self.xiaoqu_name + ' where substr(end_time, 2,4) || substr(end_time, 7,2) || substr(end_time, 9,2) between "' + begin + '" and "' + end + '"'
+            # print(sql)
+            c.execute(sql)
+            data = c.fetchall()
+            # print(len(data))
+            price = []
+            price2 = []
+            price3 = []
+            for row in data:
+                if row[5] == '无':
+                    continue
+                if row[1].find("2室") != -1:
+                    price2.append(int(row[11]))
+                if row[1].find("3室") != -1:
+                    price3.append(int(row[11]))
+                price.append(int(row[11]))
+
+            res = "0"
+            res2 = "0"
+            res3 = "0"
+            if len(price):
+                res = str(sum(price) / len(price))
+            if len(price2):
+                res2 = str(sum(price2) / len(price2))
+            if len(price3):
+                res3 = str(sum(price3) / len(price3))
+                
+            print(begin + " - " + end + " deal " + str(len(price)) + " price " + res)
+            # print("{0} - {1} 2室 deal {2} price {3} ".format(begin, end, len(price2), res2))
+            # print("{0} - {1} 3室 deal {2} price {3} ".format(begin, end, len(price3), res3))
+
+        conn.close()
+        
 
 
 if __name__ == "__main__":

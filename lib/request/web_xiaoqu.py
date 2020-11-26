@@ -84,6 +84,7 @@ class web_xiaoqu():
                 year = "0"
 
             # 打印单条房价信息
+            print(name, year, price, deal)
             print("\t===> name: %s, year: %s 年, price: %s 元/平米, deal: %s" % (
                 name, year, price, deal))
 
@@ -114,7 +115,7 @@ class web_xiaoqu():
         except Exception as e:
             print("warning: only find one page for {0}".format(self.city_name))
             print(e)
-            total_page
+            total_page = 1
 
         print('total pages:', total_page)
         headers = create_request_headers()
@@ -162,6 +163,7 @@ class web_xiaoqu():
         conn.text_factory = str
         c = conn.cursor()
         for info in self.price_info_list:
+            info = info.strip().split(',')
             if not self.check_db(info[0]):
                 sql = "insert into {0} values ( '{1}', {2}, {3}, {4})"\
                     .format(self.district, info[0], info[1], info[2], info[3])
