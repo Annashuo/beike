@@ -248,7 +248,22 @@ class web_house():
         conn.commit()
         conn.close()
 
-    def price_by_month(self, year):
+    def print_price(self, year, des, results):
+        print("========================================")
+        for month, price in zip(range(1, 13), results):
+            begin = str(year) + str(month).zfill(2) + '01'
+            end = str(year) + str(month + 1).zfill(2) + '01'
+            if month == 12:
+                end = str(year + 1) + '0101'
+            res = "0"
+            if len(price):
+                res = str(sum(price) / len(price))
+            print("{0} - {1} {2} deal {3} price {4} ".format(begin, end, des, len(price), res))
+
+    def price_by_month(self, year, ptype):
+        results = []
+        results2 = []
+        results3 = []
         conn = sqlite3.connect('house.db')
         conn.text_factory = str
         c = conn.cursor()
@@ -256,7 +271,7 @@ class web_house():
             begin = str(year) + str(month).zfill(2) + '01'
             end = str(year) + str(month + 1).zfill(2) + '01'
             if month == 12:
-                end = str(year + 1) + '-' + '0101'
+                end = str(year + 1) + '0101'
             sql = 'select * from ' + self.xiaoqu_name + ' where substr(end_time, 2,4) || substr(end_time, 7,2) || substr(end_time, 9,2) between "' + begin + '" and "' + end + '"'
             # print(sql)
             c.execute(sql)
@@ -273,20 +288,17 @@ class web_house():
                 if row[1].find("3室") != -1:
                     price3.append(int(row[11]))
                 price.append(int(row[11]))
-
-            res = "0"
-            res2 = "0"
-            res3 = "0"
-            if len(price):
-                res = str(sum(price) / len(price))
-            if len(price2):
-                res2 = str(sum(price2) / len(price2))
-            if len(price3):
-                res3 = str(sum(price3) / len(price3))
-                
-            print(begin + " - " + end + " deal " + str(len(price)) + " price " + res)
-            # print("{0} - {1} 2室 deal {2} price {3} ".format(begin, end, len(price2), res2))
-            # print("{0} - {1} 3室 deal {2} price {3} ".format(begin, end, len(price3), res3))
+            results.append(price)
+            results2.append(price2)
+            results3.append(price3)
+        if ptype == 0:
+            self.print_price(year, "总", results)
+            self.print_price(year, "2室", results2)
+            self.print_price(year, "3室", results3)
+        elif ptype == 2:
+            self.print_price(year, "2室", results2)
+        elif ptype == 3:
+            self.print_price(year, "3室", results3)
 
         conn.close()
         
